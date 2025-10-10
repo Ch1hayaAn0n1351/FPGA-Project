@@ -1,0 +1,12 @@
+|One_bit_Digital_Comparator
+a => a_eq_b.IN0
+a => a_gt_b.IN0
+a => a_lt_b.IN0
+b => a_lt_b.IN1
+b => a_eq_b.IN1
+b => a_gt_b.IN1
+a_lt_b << a_lt_b.DB_MAX_OUTPUT_PORT_TYPE
+a_eq_b << a_eq_b.DB_MAX_OUTPUT_PORT_TYPE
+a_gt_b << a_gt_b.DB_MAX_OUTPUT_PORT_TYPE
+
+

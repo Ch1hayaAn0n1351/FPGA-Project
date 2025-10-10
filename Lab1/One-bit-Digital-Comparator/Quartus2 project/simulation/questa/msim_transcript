@@ -1,0 +1,72 @@
+# Reading pref.tcl
+# //  Questa Intel Starter FPGA Edition-64
+# //  Version 2024.3 win64 Sep 10 2024
+# //
+# // Unpublished work. Copyright 2024 Siemens
+# //
+# // This material contains trade secrets or otherwise confidential information
+# // owned by Siemens Industry Software Inc. or its affiliates (collectively,
+# // "SISW"), or its licensors. Access to and use of this information is strictly
+# // limited as set forth in the Customer's applicable agreements with SISW.
+# //
+# // This material may not be copied, distributed, or otherwise disclosed outside
+# // of the Customer's facilities without the express written permission of SISW,
+# // and may not be used in any way not expressly authorized by SISW.
+# //
+# do One_bit_Digital_Comparator_run_msim_rtl_verilog.do
+# if {[file exists rtl_work]} {
+# 	vdel -lib rtl_work -all
+# }
+# vlib rtl_work
+# vmap work rtl_work
+# Questa Intel Starter FPGA Edition-64 vmap 2024.3 Lib Mapping Utility 2024.09 Sep 10 2024
+# vmap work rtl_work 
+# Copying d:/fpga/questa_fse/win64/../modelsim.ini to modelsim.ini
+# Modifying modelsim.ini
+# 
+# vlog -vlog01compat -work work +incdir+D:/FPGA\ Project/One_bit_Digital_Comparator/RTL {D:/FPGA Project/One_bit_Digital_Comparator/RTL/One_bit_Digital_Comparator.v}
+# Questa Intel Starter FPGA Edition-64 vlog 2024.3 Compiler 2024.09 Sep 10 2024
+# Start time: 23:49:29 on Sep 30,2025
+# vlog -reportprogress 300 -vlog01compat -work work "+incdir+D:/FPGA Project/One_bit_Digital_Comparator/RTL" D:/FPGA Project/One_bit_Digital_Comparator/RTL/One_bit_Digital_Comparator.v 
+# -- Compiling module One_bit_Digital_Comparator
+# 
+# Top level modules:
+# 	One_bit_Digital_Comparator
+# End time: 23:49:29 on Sep 30,2025, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# 
+# vlog -vlog01compat -work work +incdir+D:/FPGA\ Project/One_bit_Digital_Comparator/Quartus2\ project/../Sim {D:/FPGA Project/One_bit_Digital_Comparator/Quartus2 project/../Sim/tb_One_bit_Digital_Comparator.v}
+# Questa Intel Starter FPGA Edition-64 vlog 2024.3 Compiler 2024.09 Sep 10 2024
+# Start time: 23:49:29 on Sep 30,2025
+# vlog -reportprogress 300 -vlog01compat -work work "+incdir+D:/FPGA Project/One_bit_Digital_Comparator/Quartus2 project/../Sim" D:/FPGA Project/One_bit_Digital_Comparator/Quartus2 project/../Sim/tb_One_bit_Digital_Comparator.v 
+# -- Compiling module tb_One_bit_Digital_Comparator
+# 
+# Top level modules:
+# 	tb_One_bit_Digital_Comparator
+# End time: 23:49:29 on Sep 30,2025, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# 
+# vsim -t 1ps -L altera_ver -L lpm_ver -L sgate_ver -L altera_mf_ver -L altera_lnsim_ver -L cycloneive_ver -L rtl_work -L work -voptargs="+acc"  tb_One_bit_Digital_Comparator
+# vsim -t 1ps -L altera_ver -L lpm_ver -L sgate_ver -L altera_mf_ver -L altera_lnsim_ver -L cycloneive_ver -L rtl_work -L work -voptargs=""+acc"" tb_One_bit_Digital_Comparator 
+# Start time: 23:49:30 on Sep 30,2025
+# ** Note: (vsim-3812) Design is being optimized...
+# ** Warning: (vopt-10908) Some optimizations are turned off because the +acc switch is in effect.
+# ** Note: (vsim-12126) Error and warning message counts have been restored: Errors=0, Warnings=1.
+# Loading work.tb_One_bit_Digital_Comparator(fast)
+# Loading work.One_bit_Digital_Comparator(fast)
+# 
+# add wave *
+# view structure
+# .main_pane.structure.interior.cs.body.struct
+# view signals
+# .main_pane.objects.interior.cs.body.tree
+# run 1 ms
+# Time = 0, a = 0, b = 0, a_gt_b = 0, a_eq_b = 1, a_lt_b = 0
+# Time = 10000, a = 0, b = 1, a_gt_b = 0, a_eq_b = 0, a_lt_b = 1
+# Time = 20000, a = 1, b = 0, a_gt_b = 1, a_eq_b = 0, a_lt_b = 0
+# Time = 30000, a = 1, b = 1, a_gt_b = 0, a_eq_b = 1, a_lt_b = 0
+# ** Note: $stop    : D:/FPGA Project/One_bit_Digital_Comparator/Quartus2 project/../Sim/tb_One_bit_Digital_Comparator.v(23)
+#    Time: 40 ns  Iteration: 0  Instance: /tb_One_bit_Digital_Comparator
+# Break in Module tb_One_bit_Digital_Comparator at D:/FPGA Project/One_bit_Digital_Comparator/Quartus2 project/../Sim/tb_One_bit_Digital_Comparator.v line 23
+# End time: 01:03:08 on Oct 01,2025, Elapsed time: 1:13:38
+# Errors: 0, Warnings: 1
