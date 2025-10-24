@@ -1,0 +1,49 @@
+`timescale 1ns/1ps
+module ColorBar(
+    input wire sys_clk,       
+    input wire sys_rst_n,    
+    input wire key_s,         
+    input wire key_d,         
+    input wire key_f,          
+    input wire key_g,          
+    output wire hsync,        
+    output wire vsync,        
+    output wire [15:0] rgb    
+);
+
+
+wire vga_clk;         
+wire [9:0] pix_x, pix_y;  
+wire [15:0] pix_data;   
+
+pll pll_inst(
+    .sys_clk(sys_clk),
+    .sys_rst_n(sys_rst_n),
+    .vga_clk(vga_clk)
+);
+
+
+vga_pic vga_pic_inst(
+    .vga_clk(vga_clk),
+    .sys_rst_n(sys_rst_n),
+    .key_s(key_s),
+    .key_d(key_d),
+    .pix_x(pix_x),
+    .pix_y(pix_y),
+    .pix_data(pix_data)
+);
+
+
+vga_ctrl vga_ctrl_inst(
+    .vga_clk(vga_clk),
+    .sys_rst_n(sys_rst_n),
+    .pix_data(pix_data),
+    .pix_x(pix_x),
+    .pix_y(pix_y),
+    .hsync(hsync),
+    .vsync(vsync),
+    .rgb(rgb)
+);
+
+endmodule
+
