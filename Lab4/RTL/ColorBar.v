@@ -63,10 +63,9 @@ state_machine_final state_machine_final_inst(
 );
 
 // 6. 图像选择逻辑：根据状态机选择当前显示的图像
-// 状态定义：0-IDLE（黑屏）、1-BAR（色条）、2-CHAR（32x32字符）、3-CUSTOM（64x64字符）
-assign pix_data_sel = (state == 2'd0) ? 16'h0000 :         // 状态0：黑屏
-                      (state == 2'd1) ? pic_bar_data :     // 状态1：显示色条
-                      (state == 2'd2) ? pic_char1_data :   // 状态2：显示32x32字符
+// 状态定义：1-BAR（色条）、2-CHAR（32x32字符）、3-CUSTOM（64x64字符）
+assign pix_data_sel = (state == 2'd1) ? pic_bar_data :     // 状态1：显示色条
+                      (state == 2'd2) ? pic_char1_data :   // 状态2：显示64x64字符
                       (state == 2'd3) ? pic_char2_data :   // 状态3：显示64x64字符
                                         16'h0000;          // 默认：黑屏
 
