@@ -36,16 +36,16 @@ vga_pic vga_pic_inst(
     .pix_data(pic_bar_data)    // 输出色条图像数据
 );
 
-// 3. 32x32字符图像模块：生成小字符图像
+// 3. 64x64字符图像模块：生成MUST图像
 vga_pic1 vga_pic1_inst(
     .vga_clk(vga_clk),
     .sys_rst_n(sys_rst_n),
     .pix_x(pix_x),
     .pix_y(pix_y),
-    .pix_data(pic_char1_data)  // 输出32x32字符数据
+    .pix_data(pic_char1_data)  // 输出64x64字符数据
 );
 
-// 4. 64x64字符图像模块：生成大字符图像
+// 4. 64x64字符图像模块：生成END图像
 vga_pic2 vga_pic2_inst(
     .vga_clk(vga_clk),
     .sys_rst_n(sys_rst_n),
@@ -55,7 +55,7 @@ vga_pic2 vga_pic2_inst(
 );
 
 // 5. 状态机模块：控制图像切换（4种状态循环）
-state_machine_vga state_machine_vga_inst(
+state_machine_final state_machine_final_inst(
     .sys_clk(sys_clk),         // 系统时钟（状态机驱动时钟）
     .sys_rst_n(sys_rst_n),     // 复位信号
     .chan(key_s),              // 状态切换触发（按键key_s）
