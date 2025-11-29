@@ -1,0 +1,288 @@
+`timescale 1ns / 1ps
+module breakout(disp, left, right, clock, hsync, vsync, r, g, b, endGame);
+    input disp, left, right, clock; // 输入：显示使能、左右移动按键、时钟
+    output hsync, vsync, r, g, b;   // 输出：VGA同步信号、颜色
+    output endGame;                 // 输出：游戏结束标志
+    
+    // 游戏核心参数配置
+    integer i, j, k, brickIndex;
+    integer brW = 60, brH = 20;     // 砖块宽/高
+    integer pW = 32, pH = 4;        // 挡板宽/高
+    integer pointValue = 1;         // 砖块得分
+    integer paddle_speed = 5;       // 挡板移动速度（步长，可调整：1~10为宜）
+    integer ball_half_width = 4;    // 小球X半宽（原8，减小体积）
+    integer ball_half_height = 2;   // 小球Y半高（原4，减小体积）
+    integer ballSpeedX = 3;         // 小球X速度（简化为整数，更直观）
+    integer ballSpeedY = 3;         // 小球Y速度（简化为整数，更直观）
+    
+    // 边框边界
+    integer left_border = 130;
+    integer right_border = 700;
+    integer top_border = 20;
+    
+    // 状态信号
+    wire inDispArea, border, ball, ballX, ballY, paddle, paddleX, paddleY;
+    wire bouncingObject, resetFrame, brickCollision;
+    wire[23:0] num;
+    wire[9:0] cX, cY, gX, gY;
+    wire[3:0] sTens, sOnes;
+    wire[1:0] scoreDispX;
+    wire scoreDispY;
+    
+    // 砖块状态数组
+    reg brickX[0:31];
+    reg brickY[0:31];
+    
+    // 物体位置与状态寄存器
+    reg[9:0] ballPX = 415, ballPY = 400; // 小球初始位置上移，更容易碰挡板
+    reg[9:0] paddlePX = 415, paddlePY = 468;
+    reg[9:0] scoreDispPX[3:0], scoreDispPY;
+    reg[3:0] bricks = 4'b0;
+    reg[2:0] scoreWriterX = 3'b0, scoreWriterY = 3'b0, strikePos = 3'b0;
+    reg[9:0] brickPX[0:7], brickPY[0:3];
+    reg[31:0] brickState = 32'hFFFFFFFF;
+    reg[7:0] font0[7:0], font1[7:0], font2[7:0], font3[7:0], font4[7:0];
+    reg[7:0] font5[7:0], font6[7:0], font7[7:0], font8[7:0], font9[7:0];
+    reg[6:0] playerScore = 7'b0000000;
+    reg[3:0] tens, ones;
+    reg endGame = 1'b0, score, bricksRow = 1'b1;
+    
+    // 碰撞标志寄存器
+    reg collisionX1, collisionX2, collisionY1, collisionY2;
+    // 小球运动方向（0=右/下，1=左/上）
+    reg ball_dirX = 0, ball_dirY = 0; // 初始向下，方便碰挡板
+    
+    // 初始化：砖块位置+字体点阵
+    initial begin
+        // 8列4行砖块居中布局
+        for(j=0; j<8; j=j+1) 
+            brickPX[j] = left_border + 45 + 60*j;
+        for(k=0; k<4; k=k+1) 
+            brickPY[k] = top_border + 30 + 25*k;
+        
+        // 数字0点阵（示例）
+        font0[0] = 8'b01111110; font0[1] = 8'b01000010;
+        font0[2] = 8'b01000010; font0[3] = 8'b01000010;
+        font0[4] = 8'b01000010; font0[5] = 8'b01000010;
+        font0[6] = 8'b01000010; font0[7] = 8'b01111110;
+    end
+    
+    // 砖块状态检测
+    always @(posedge num[0]) begin
+        bricks = 4'b0;
+        // 检测最后一行砖块是否全部消失
+        for(i=24; i<32; i=i+1)
+            bricksRow = bricksRow & ~brickState[i];
+        
+        // 更新砖块显示范围
+        for(i=0; i<32; i=i+1) begin
+            j = i % 8;
+            k = i / 8;
+            if(brickState[i]) begin
+                brickX[i] = (cX == brickPX[j] - brW/2) ? 1 : (cX == brickPX[j] + brW/2 - 1) ? 0 : brickX[i];
+                brickY[i] = (cY == brickPY[k] - brH/2) ? 1 : (cY == brickPY[k] + brH/2 - 1) ? 0 : brickY[i];
+                case(k)
+                    0: bricks[0] |= brickX[i] & brickY[i];
+                    1: bricks[1] |= brickX[i] & brickY[i];
+                    2: bricks[2] |= brickX[i] & brickY[i];
+                    3: bricks[3] |= brickX[i] & brickY[i];
+                endcase
+            end
+        end
+    end
+    
+    // 模块实例化
+    counter c(.clock(clock), .out(num));
+    binaryToBCD convert(.data(playerScore), .t(sTens), .o(sOnes));
+    syncGen generator(.clock(num[0]), .hsync(hsync), .vsync(vsync), 
+                     .hcount(cX), .vcount(cY), .inDispArea(inDispArea));
+    
+    // 小球边界碰撞检测
+    always @(posedge num[0]) begin
+        if(resetFrame) begin
+            collisionX1 <= 0; collisionX2 <= 0;
+            collisionY1 <= 0; collisionY2 <= 0;
+        end else begin
+            // 左边界碰撞
+            if(bouncingObject && (ballPX - ball_half_width <= left_border))
+                collisionX1 <= 1;
+            // 右边界碰撞
+            if(bouncingObject && (ballPX + ball_half_width >= (right_border>639?639:right_border)))
+                collisionX2 <= 1;
+            // 上边界碰撞
+            if(bouncingObject && (ballPY - ball_half_height <= top_border))
+                collisionY1 <= 1;
+            // 挡板碰撞检测（关键修改：放宽X范围，判断重叠）
+            if(bouncingObject && paddle && 
+               (ballPY + ball_half_height >= paddlePY - pH/2) && 
+               (ballPY - ball_half_height <= paddlePY + pH/2) &&
+               (ballPX + ball_half_width >= paddlePX - pW/2) && 
+               (ballPX - ball_half_width <= paddlePX + pW/2)) begin
+                collisionY2 <= 1;
+                // 记录撞击位置（左/中/右）
+                if(ballPX < paddlePX - pW/4) strikePos <= 3'b001; // 左部
+                else if(ballPX > paddlePX + pW/4) strikePos <= 3'b000; // 右部
+                else strikePos <= 3'b010; // 中部
+            end
+            // 底部边界（游戏结束）
+            else if(bouncingObject && (ballPY + ball_half_height >= 479)) begin
+                endGame <= 1;
+            end
+        end
+    end
+    
+    // 分数显示逻辑
+    always @(posedge num[0]) begin
+        if(|scoreDispX & scoreDispY) begin
+            scoreWriterX <= scoreWriterX + 1;
+            if(scoreDispX[0]) begin
+                case(tens)
+                    0: score <= font0[scoreWriterY][scoreWriterX];
+                    1: score <= font1[scoreWriterY][scoreWriterX];
+                    2: score <= font2[scoreWriterY][scoreWriterX];
+                    3: score <= font3[scoreWriterY][scoreWriterX];
+                    4: score <= font4[scoreWriterY][scoreWriterX];
+                    5: score <= font5[scoreWriterY][scoreWriterX];
+                    6: score <= font6[scoreWriterY][scoreWriterX];
+                    7: score <= font7[scoreWriterY][scoreWriterX];
+                    8: score <= font8[scoreWriterY][scoreWriterX];
+                    9: score <= font9[scoreWriterY][scoreWriterX];
+                    default: score <= font0[scoreWriterY][scoreWriterX];
+                endcase
+            end else if(scoreDispX[1]) begin
+                if(scoreWriterX == 3'b111) scoreWriterY <= scoreWriterY + 1;
+                case(ones)
+                    0: score <= font0[scoreWriterY][scoreWriterX];
+                    1: score <= font1[scoreWriterY][scoreWriterX];
+                    2: score <= font2[scoreWriterY][scoreWriterX];
+                    3: score <= font3[scoreWriterY][scoreWriterX];
+                    4: score <= font4[scoreWriterY][scoreWriterX];
+                    5: score <= font5[scoreWriterY][scoreWriterX];
+                    6: score <= font6[scoreWriterY][scoreWriterX];
+                    7: score <= font7[scoreWriterY][scoreWriterX];
+                    8: score <= font8[scoreWriterY][scoreWriterX];
+                    9: score <= font9[scoreWriterY][scoreWriterX];
+                    default: score <= font0[scoreWriterY][scoreWriterX];
+                endcase
+            end
+        end else begin
+            score <= 0;
+        end
+    end
+    
+    // 游戏主逻辑（物体运动控制）
+    always @(posedge num[0]) begin
+        // 砖块碰撞检测
+        if(brickCollision) begin
+            for(i=0; i<32; i=i+1) begin
+                if(brickX[i] & brickY[i]) brickIndex <= i;
+            end
+        end
+        
+        if(resetFrame) begin
+            // 砖块碰撞处理：消除+反弹+加分
+            if(brickIndex != -1) begin
+                brickState[brickIndex] <= 0;
+                ball_dirY <= ~ball_dirY; // 砖块碰撞反弹
+                playerScore <= playerScore + ((brickIndex/8)==0 ? 2 : 1)*pointValue;
+                ones <= sOnes; tens <= sTens;
+                brickIndex <= -1;
+            end
+            
+            // 小球X方向运动控制
+            if(collisionX1) begin // 左边界反弹
+                ball_dirX <= 0;
+                ballPX <= left_border + ball_half_width + 1;
+            end else if(collisionX2) begin // 右边界反弹
+                ball_dirX <= 1;
+                ballPX <= (right_border>639?639:right_border) - ball_half_width - 1;
+            end else begin // 正常移动
+                ballPX <= ballPX + (ball_dirX ? -ballSpeedX : ballSpeedX);
+            end
+            
+            // 小球Y方向运动控制（关键修改：挡板碰撞强制反弹）
+            if(collisionY1) begin // 上边界反弹
+                ball_dirY <= 0;
+                ballPY <= top_border + ball_half_height + 1;
+            end else if(collisionY2) begin // 挡板反弹（强制向上）
+                ball_dirY <= 1; // 明确向上反弹
+                ballPY <= paddlePY - pH/2 - ball_half_height - 1; // 离开挡板，避免重复碰撞
+                // 挡板撞击位置影响X方向
+                if(strikePos == 3'b000) ball_dirX <= 0; // 撞右部→右移
+                else if(strikePos == 3'b001) ball_dirX <= 1; // 撞左部→左移
+            end else if(endGame) begin // 游戏结束，停止移动
+                ballPY <= ballPY;
+            end else begin // 正常移动
+                ballPY <= ballPY + (ball_dirY ? -ballSpeedY : ballSpeedY);
+            end
+            
+            // 挡板移动控制（使用自定义速度）
+            if(~left && (paddlePX - pW/2 > left_border)) begin
+                paddlePX <= paddlePX - paddle_speed;
+            end else if(~right && (paddlePX + pW/2 < (right_border>639?639:right_border))) begin
+                paddlePX <= paddlePX + paddle_speed;
+            end
+        end
+    end
+    
+    // 信号赋值
+    assign scoreDispX[0] = (cX == scoreDispPX[0]) ? 1 : (cX == scoreDispPX[0]+8) ? 0 : scoreDispX[0];
+    assign scoreDispX[1] = (cX == scoreDispPX[1]) ? 1 : (cX == scoreDispPX[1]+8) ? 0 : scoreDispX[1];
+    assign scoreDispY = (cY == scoreDispPY) ? 1 : (cY == scoreDispPY+8) ? 0 : scoreDispY;
+    assign brickCollision = |bricks & ball;
+    assign bouncingObject = border | paddle | bricks | (cY[9:3]==59);
+    assign resetFrame = (cX==639) & (cY==479);
+    assign border = (cX==left_border) | (cX==(right_border>639?639:right_border)) | (cY==top_border);
+    assign gX = cX; assign gY = cY;
+    
+    // 小球显示（减小体积）
+    assign ballX = (cX >= ballPX - ball_half_width) && (cX <= ballPX + ball_half_width) ? 1 : 0;
+    assign ballY = (cY >= ballPY - ball_half_height) && (cY <= ballPY + ball_half_height) ? 1 : 0;
+    assign ball = ballX & ballY;
+    
+    // 挡板显示（修正显示范围，确保paddle信号正确）
+    assign paddleX = (cX >= paddlePX - pW/2) && (cX <= paddlePX + pW/2) ? 1 : 0;
+    assign paddleY = (cY >= paddlePY - pH/2) && (cY <= paddlePY + pH/2) ? 1 : 0;
+    assign paddle = paddleX & paddleY;
+    
+    // 颜色输出
+    assign r = endGame ? (cX[5]^cY[5]) : (border | bricks[0] | bricks[3] | score | paddle);
+    assign g = endGame ? 0 : (border | bricks[1] | bricks[3] | score | paddle | ball);
+    assign b = endGame ? 0 : (border | bricks[2] | score | paddle | ball);
+endmodule
+
+// 计数器模块（示例）
+module counter(input clock, output reg[23:0] out);
+    always @(posedge clock) begin
+        out <= out + 1;
+    end
+endmodule
+
+// BCD转换模块（示例）
+module binaryToBCD(input[6:0] data, output reg[3:0] t, o);
+    always @(*) begin
+        t = data / 10;
+        o = data % 10;
+    end
+endmodule
+
+// VGA同步发生器模块（示例，适配640x480@60Hz）
+module syncGen(input clock, output reg hsync, vsync, 
+               output reg[9:0] hcount, vcount, output reg inDispArea);
+    parameter H_SYNC = 96, H_BACK = 48, H_ACT = 640, H_FRONT = 16;
+    parameter V_SYNC = 2, V_BACK = 33, V_ACT = 480, V_FRONT = 10;
+    
+    wire h_end = (hcount == H_SYNC+H_BACK+H_ACT+H_FRONT-1);
+    wire v_end = (vcount == V_SYNC+V_BACK+V_ACT+V_FRONT-1);
+    
+    always @(posedge clock) begin
+        hcount <= h_end ? 0 : hcount + 1;
+        vcount <= h_end ? (v_end ? 0 : vcount + 1) : vcount;
+        
+        hsync <= (hcount < H_SYNC) ? 0 : 1;
+        vsync <= (vcount < V_SYNC) ? 0 : 1;
+        
+        inDispArea <= (hcount >= H_SYNC+H_BACK) && (hcount < H_SYNC+H_BACK+H_ACT) &&
+                      (vcount >= V_SYNC+V_BACK) && (vcount < V_SYNC+V_BACK+V_ACT);
+    end
+endmodule
