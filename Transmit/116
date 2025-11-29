@@ -12,8 +12,8 @@ module breakout(disp, left, right, clock, hsync, vsync, r, g, b, endGame);
     integer paddle_speed = 5;       // 挡板移动速度（步长，可调整：1~10为宜）
     integer ball_half_width = 4;    // 小球X半宽（原8，减小体积）
     integer ball_half_height = 2;   // 小球Y半高（原4，减小体积）
-    integer ballSpeedX = 3;         // 小球X速度（简化为整数，更直观）
-    integer ballSpeedY = 3;         // 小球Y速度（简化为整数，更直观）
+    integer ballSpeedX = 3'b110;    // 小球X速度
+    integer ballSpeedY = 3'b110;    // 小球Y速度
     
     // 边框边界
     integer left_border = 130;
@@ -34,7 +34,7 @@ module breakout(disp, left, right, clock, hsync, vsync, r, g, b, endGame);
     reg brickY[0:31];
     
     // 物体位置与状态寄存器
-    reg[9:0] ballPX = 415, ballPY = 400; // 小球初始位置上移，更容易碰挡板
+    reg[9:0] ballPX = 415, ballPY = 460;
     reg[9:0] paddlePX = 415, paddlePY = 468;
     reg[9:0] scoreDispPX[3:0], scoreDispPY;
     reg[3:0] bricks = 4'b0;
@@ -50,7 +50,7 @@ module breakout(disp, left, right, clock, hsync, vsync, r, g, b, endGame);
     // 碰撞标志寄存器
     reg collisionX1, collisionX2, collisionY1, collisionY2;
     // 小球运动方向（0=右/下，1=左/上）
-    reg ball_dirX = 0, ball_dirY = 0; // 初始向下，方便碰挡板
+    reg ball_dirX = 0, ball_dirY = 1;
     
     // 初始化：砖块位置+字体点阵
     initial begin
@@ -104,29 +104,22 @@ module breakout(disp, left, right, clock, hsync, vsync, r, g, b, endGame);
             collisionY1 <= 0; collisionY2 <= 0;
         end else begin
             // 左边界碰撞
-            if(bouncingObject && (ballPX - ball_half_width <= left_border))
+            if(bouncingObject & (ballPX - ball_half_width <= left_border) & (cY == ballPY))
                 collisionX1 <= 1;
             // 右边界碰撞
-            if(bouncingObject && (ballPX + ball_half_width >= (right_border>639?639:right_border)))
+            if(bouncingObject & (ballPX + ball_half_width >= (right_border>639?639:right_border)) & (cY == ballPY))
                 collisionX2 <= 1;
             // 上边界碰撞
-            if(bouncingObject && (ballPY - ball_half_height <= top_border))
+            if(bouncingObject & (ballPY - ball_half_height <= top_border) & (cX == ballPX))
                 collisionY1 <= 1;
-            // 挡板碰撞检测（关键修改：放宽X范围，判断重叠）
-            if(bouncingObject && paddle && 
-               (ballPY + ball_half_height >= paddlePY - pH/2) && 
-               (ballPY - ball_half_height <= paddlePY + pH/2) &&
-               (ballPX + ball_half_width >= paddlePX - pW/2) && 
-               (ballPX - ball_half_width <= paddlePX + pW/2)) begin
+            // 下边界（挡板/底部）碰撞
+            if(bouncingObject & (ballPY + ball_half_height >= paddlePY - pH/2) & (cX == ballPX)) begin
+                if(cY[9:3] == 59) endGame <= 1;
+                if(paddle) begin
+                    strikePos <= (cX - paddlePX > pW/3) ? 3'b000 : 
+                                (paddlePX - cX > pW/3) ? 3'b001 : 3'b010;
+                end
                 collisionY2 <= 1;
-                // 记录撞击位置（左/中/右）
-                if(ballPX < paddlePX - pW/4) strikePos <= 3'b001; // 左部
-                else if(ballPX > paddlePX + pW/4) strikePos <= 3'b000; // 右部
-                else strikePos <= 3'b010; // 中部
-            end
-            // 底部边界（游戏结束）
-            else if(bouncingObject && (ballPY + ball_half_height >= 479)) begin
-                endGame <= 1;
             end
         end
     end
@@ -200,18 +193,16 @@ module breakout(disp, left, right, clock, hsync, vsync, r, g, b, endGame);
                 ballPX <= ballPX + (ball_dirX ? -ballSpeedX : ballSpeedX);
             end
             
-            // 小球Y方向运动控制（关键修改：挡板碰撞强制反弹）
+            // 小球Y方向运动控制
             if(collisionY1) begin // 上边界反弹
                 ball_dirY <= 0;
                 ballPY <= top_border + ball_half_height + 1;
-            end else if(collisionY2) begin // 挡板反弹（强制向上）
-                ball_dirY <= 1; // 明确向上反弹
-                ballPY <= paddlePY - pH/2 - ball_half_height - 1; // 离开挡板，避免重复碰撞
+            end else if(collisionY2) begin // 挡板反弹（修改后：反转Y方向+位置微调）
+                ball_dirY <= ~ball_dirY; // 反转Y方向实现反弹
+                ballPY <= paddlePY - ball_half_height - 1; // 离开挡板，避免卡顿
                 // 挡板撞击位置影响X方向
-                if(strikePos == 3'b000) ball_dirX <= 0; // 撞右部→右移
-                else if(strikePos == 3'b001) ball_dirX <= 1; // 撞左部→左移
-            end else if(endGame) begin // 游戏结束，停止移动
-                ballPY <= ballPY;
+                if(strikePos == 3'b000) ball_dirX <= 0;
+                else if(strikePos == 3'b001) ball_dirX <= 1;
             end else begin // 正常移动
                 ballPY <= ballPY + (ball_dirY ? -ballSpeedY : ballSpeedY);
             end
@@ -236,53 +227,17 @@ module breakout(disp, left, right, clock, hsync, vsync, r, g, b, endGame);
     assign gX = cX; assign gY = cY;
     
     // 小球显示（减小体积）
-    assign ballX = (cX >= ballPX - ball_half_width) && (cX <= ballPX + ball_half_width) ? 1 : 0;
-    assign ballY = (cY >= ballPY - ball_half_height) && (cY <= ballPY + ball_half_height) ? 1 : 0;
+    assign ballX = (cX == ballPX - ball_half_width) ? 1 : (cX == ballPX + ball_half_width) ? 0 : ballX;
+    assign ballY = (cY == ballPY - ball_half_height) ? 1 : (cY == ballPY + ball_half_height) ? 0 : ballY;
     assign ball = ballX & ballY;
     
-    // 挡板显示（修正显示范围，确保paddle信号正确）
-    assign paddleX = (cX >= paddlePX - pW/2) && (cX <= paddlePX + pW/2) ? 1 : 0;
-    assign paddleY = (cY >= paddlePY - pH/2) && (cY <= paddlePY + pH/2) ? 1 : 0;
+    // 挡板显示
+    assign paddleX = (cX == paddlePX - pW/2) ? 1 : (cX == paddlePX + pW/2 - 1) ? 0 : paddleX;
+    assign paddleY = (cY == paddlePY - pH/2) ? 1 : (cY == paddlePY + pH/2 - 1) ? 0 : paddleY;
     assign paddle = paddleX & paddleY;
     
     // 颜色输出
     assign r = endGame ? (cX[5]^cY[5]) : (border | bricks[0] | bricks[3] | score | paddle);
     assign g = endGame ? 0 : (border | bricks[1] | bricks[3] | score | paddle | ball);
     assign b = endGame ? 0 : (border | bricks[2] | score | paddle | ball);
-endmodule
-
-// 计数器模块（示例）
-module counter(input clock, output reg[23:0] out);
-    always @(posedge clock) begin
-        out <= out + 1;
-    end
-endmodule
-
-// BCD转换模块（示例）
-module binaryToBCD(input[6:0] data, output reg[3:0] t, o);
-    always @(*) begin
-        t = data / 10;
-        o = data % 10;
-    end
-endmodule
-
-// VGA同步发生器模块（示例，适配640x480@60Hz）
-module syncGen(input clock, output reg hsync, vsync, 
-               output reg[9:0] hcount, vcount, output reg inDispArea);
-    parameter H_SYNC = 96, H_BACK = 48, H_ACT = 640, H_FRONT = 16;
-    parameter V_SYNC = 2, V_BACK = 33, V_ACT = 480, V_FRONT = 10;
-    
-    wire h_end = (hcount == H_SYNC+H_BACK+H_ACT+H_FRONT-1);
-    wire v_end = (vcount == V_SYNC+V_BACK+V_ACT+V_FRONT-1);
-    
-    always @(posedge clock) begin
-        hcount <= h_end ? 0 : hcount + 1;
-        vcount <= h_end ? (v_end ? 0 : vcount + 1) : vcount;
-        
-        hsync <= (hcount < H_SYNC) ? 0 : 1;
-        vsync <= (vcount < V_SYNC) ? 0 : 1;
-        
-        inDispArea <= (hcount >= H_SYNC+H_BACK) && (hcount < H_SYNC+H_BACK+H_ACT) &&
-                      (vcount >= V_SYNC+V_BACK) && (vcount < V_SYNC+V_BACK+V_ACT);
-    end
 endmodule
