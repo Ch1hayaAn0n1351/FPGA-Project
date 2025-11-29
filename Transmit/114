@@ -1,0 +1,196 @@
+`timescale 1ns / 1ps
+module breakout(disp, left, right, clock, hsync, vsync, r, g, b, endGame);
+    input disp, left, right, clock; 
+    output hsync, vsync, r, g, b;   
+    output reg endGame;             
+    
+    // 游戏参数
+    integer i, j, k, brickIndex, brW = 60, brH = 20, pW = 32, pH = 4, pointValue = 1;
+    integer left_border = 130;     
+    integer right_border = 700;    
+    integer top_border = 20;       
+    
+    // 新增：补充未声明的变量
+    reg bricksRow;       // 第四行砖块消失标志
+    reg score;           // 分数显示使能
+    
+    // 状态信号
+    wire inDispArea, border, ball, ballX, ballY, paddle, paddleX, paddleY, bouncingObject, resetFrame, brickCollision;
+    wire[23:0] num;                
+    wire[9:0] cX, cY, gX, gY;      
+    wire[3:0] sTens, sOnes;        
+    wire[1:0] scoreDispX;          
+    wire scoreDispY;               
+    
+    // 砖块状态数组
+    reg brickX[0:31];
+    reg brickY[0:31];
+    
+    // 物体位置
+    reg[9:0] ballPX = 415, ballPY = 460, paddlePX = 415, paddlePY = 468, scoreDispPX[3:0], scoreDispPY;
+    reg[3:0] bricks = 4'b0;        
+    reg[2:0] scoreWriterX = 3'b0, scoreWriterY = 3'b0, strikePos = 3'b0;
+    reg[9:0] brickPX[0:7], brickPY[0:3]; 
+    reg[31:0] brickState = 32'hFFFFFFFF; 
+    reg[7:0] font0[7:0], font1[7:0], font2[7:0], font3[7:0], font4[7:0], 
+             font5[7:0], font6[7:0], font7[7:0], font8[7:0], font9[7:0]; 
+    reg[6:0] playerScore = 7'b0000000; 
+    reg[3:0] tens, ones;           
+    reg[2:0] ballSpeedX = 3'b110, ballSpeedY = 3'b110; // 步长：6
+    reg ball_dirX, ball_dirY;      // 0=右/下，1=左/上
+
+    // 初始化变量
+    initial begin
+        ball_dirX = 0; // 初始向右
+        ball_dirY = 1; // 初始向上
+        endGame = 0;
+        bricksRow = 1; // 初始化第四行砖块存在
+        score = 0;     // 初始化分数显示关闭
+        
+        // 初始化砖块位置（8列4行居中）
+        for(j=0; j<8; j=j+1) brickPX[j] = left_border + 45 + 60*j; 
+        for(k=0; k<4; k=k+1) brickPY[k] = top_border + 30 + 25*k;  
+        
+        // 初始化数字0点阵
+        font0[0] = 8'b01111110; font0[1] = 8'b01000010; font0[2] = 8'b01000010; font0[3] = 8'b01000010;
+        font0[4] = 8'b01000010; font0[5] = 8'b01000010; font0[6] = 8'b01000010; font0[7] = 8'b01111110;
+    end
+    
+    // 砖块状态检测
+    always @(posedge num[0]) begin
+        bricks = 4'b0;
+        // 修正：逐行检测第四行砖块是否全部消失
+        bricksRow = 1;
+        for(i = 24; i < 32; i = i + 1) begin
+            bricksRow = bricksRow & ~brickState[i];
+        end
+            
+        for(i = 0; i < 32; i = i + 1) begin
+            j = i % 8;    
+            k = i / 8;    
+            
+            if(brickState[i]) begin 
+                brickX[i] = (cX >= (brickPX[j] - brW/2)) && (cX <= (brickPX[j] + brW/2));
+                brickY[i] = (cY >= (brickPY[k] - brH/2)) && (cY <= (brickPY[k] + brH/2));
+                
+                case(k)
+                    0: bricks[0] = bricks[0] | (brickX[i] & brickY[i]);
+                    1: bricks[1] = bricks[1] | (brickX[i] & brickY[i]);
+                    2: bricks[2] = bricks[2] | (brickX[i] & brickY[i]);
+                    3: bricks[3] = bricks[3] | (brickX[i] & brickY[i]);
+                endcase
+            end
+        end
+    end
+    
+    // 模块实例化
+    counter c(.clock(clock), .out(num)); 
+    binaryToBCD convert(.data(playerScore), .t(sTens), .o(sOnes)); 
+    syncGen generator(.clock(num[0]), .hsync(hsync), .vsync(vsync), .hcount(cX), .vcount(cY), .inDispArea(inDispArea)); 
+    
+    // 游戏逻辑核心（碰撞+移动）
+    always @(posedge num[0]) begin
+        // 1. 边界碰撞检测（关键修复：基于小球边缘）
+        if(ballPX - 8 <= left_border) begin
+            ball_dirX <= 0; // 左边界→向右
+        end
+        if(ballPX + 8 >= (right_border > 639 ? 639 : right_border)) begin
+            ball_dirX <= 1; // 右边界→向左
+        end
+        if(ballPY - 4 <= top_border) begin
+            ball_dirY <= 0; // 上边界→向下
+        end
+        if(ballPY + 4 >= 479) begin
+            endGame <= 1; // 下边界→游戏结束
+        end
+
+        // 2. 砖块碰撞检测
+        assign brickCollision = (|bricks) & ball; // 修正：assign需移到always块外，改为wire声明
+        if(brickCollision) begin 
+            for(i = 0; i < 32; i = i + 1) 
+                if(brickX[i] & brickY[i]) brickIndex <= i; 
+            
+            if(brickIndex != -1) begin
+                ball_dirY <= ~ball_dirY; // Y方向反弹
+                brickState[brickIndex] <= 0; 
+                playerScore <= playerScore + ((brickIndex / 8) == 0 ? 2 : 1) * pointValue;
+                ones <= sOnes; tens <= sTens; 
+                brickIndex <= -1;
+            end
+        end
+
+        // 3. 小球移动（方向修正后更新）
+        if(~endGame) begin
+            ballPX <= ballPX + (ball_dirX ? -ballSpeedX : ballSpeedX);
+            ballPY <= ballPY + (ball_dirY ? -ballSpeedY : ballSpeedY);
+        end
+
+        // 4. 挡板移动
+        if(~left && (paddlePX - pW/2 > left_border)) begin
+            paddlePX <= paddlePX - 3; 
+        end else if(~right && (paddlePX + pW/2 < (right_border > 639 ? 639 : right_border))) begin
+            paddlePX <= paddlePX + 3; 
+        end
+
+        // 5. 挡板变窄逻辑（第四行砖块全部消失后）
+        if(bricksRow) pW <= 24; 
+    end
+    
+    // 分数显示逻辑
+    always @(posedge num[0]) begin
+        if(|scoreDispX & scoreDispY) begin 
+            scoreWriterX <= scoreWriterX + 1; 
+            score <= 1; // 开启分数显示
+            if(scoreDispX[0]) begin 
+                case(tens)
+                    4'b0000: score <= font0[scoreWriterY][scoreWriterX];
+                    4'b0001: score <= font1[scoreWriterY][scoreWriterX];
+                    4'b0010: score <= font2[scoreWriterY][scoreWriterX];
+                    4'b0011: score <= font3[scoreWriterY][scoreWriterX];
+                    4'b0100: score <= font4[scoreWriterY][scoreWriterX];
+                    4'b0101: score <= font5[scoreWriterY][scoreWriterX];
+                    4'b0110: score <= font6[scoreWriterY][scoreWriterX];
+                    4'b0111: score <= font7[scoreWriterY][scoreWriterX];
+                    4'b1000: score <= font8[scoreWriterY][scoreWriterX];
+                    4'b1001: score <= font9[scoreWriterY][scoreWriterX];
+                    default: score <= font0[scoreWriterY][scoreWriterX];
+                endcase
+            end
+            else if(scoreDispX[1]) begin 
+                if(scoreWriterX == 3'b111) scoreWriterY <= scoreWriterY + 1;
+                case(ones)
+                    4'b0000: score <= font0[scoreWriterY][scoreWriterX];
+                    4'b0001: score <= font1[scoreWriterY][scoreWriterX];
+                    4'b0010: score <= font2[scoreWriterY][scoreWriterX];
+                    4'b0011: score <= font3[scoreWriterY][scoreWriterX];
+                    4'b0100: score <= font4[scoreWriterY][scoreWriterX];
+                    4'b0101: score <= font5[scoreWriterY][scoreWriterX];
+                    4'b0110: score <= font6[scoreWriterY][scoreWriterX];
+                    4'b0111: score <= font7[scoreWriterY][scoreWriterX];
+                    4'b1000: score <= font8[scoreWriterY][scoreWriterX];
+                    4'b1001: score <= font9[scoreWriterY][scoreWriterX];
+                    default: score <= font0[scoreWriterY][scoreWriterX];
+                endcase
+            end
+        end
+        else score <= 0; // 关闭分数显示
+    end
+    
+    // 修正：将assign移到always块外（Verilog语法要求）
+    wire brickCollision;
+    assign brickCollision = (|bricks) & ball;
+    assign resetFrame = (cX == 639) && (cY == 479);
+    assign border = (cX == left_border) || (cX == (right_border > 639 ? 639 : right_border)) || (cY == top_border);
+    assign ballX = (cX >= ballPX - 8) && (cX <= ballPX + 8);
+    assign ballY = (cY >= ballPY - 4) && (cY <= ballPY + 4);
+    assign ball = ballX & ballY;
+    assign paddleX = (cX >= paddlePX - pW/2) && (cX <= paddlePX + pW/2);
+    assign paddleY = (cY >= paddlePY - pH/2) && (cY <= paddlePY + pH/2);
+    assign paddle = paddleX & paddleY;
+    assign bouncingObject = border | paddle | bricks | (cY == 479);
+    
+    // RGB输出
+    assign r = endGame ? (cX[5] ^ cY[5]) : (border | bricks[0] | bricks[3] | score | paddle);
+    assign g = endGame ? 0 : (border | bricks[1] | bricks[3] | score | paddle | ball);
+    assign b = endGame ? 0 : (border | bricks[2] | score | paddle | ball);
+endmodule
