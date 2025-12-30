@@ -1,3 +1,8 @@
+//Unfortunately，Our program cannot running if we add these key_debounce codes.
+//However, In virtualBox, Our Program has key_debounce without these codes.
+//And without key_debounce codes, Our Program could works very stable.
+
+
 //Key Debounce Module Definition
 `timescale 1ns/1ps
 module key_debounce(
